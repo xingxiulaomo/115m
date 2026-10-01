@@ -143,7 +143,7 @@ export class PlaybackSession {
     }
   }
 
-  /** 移动指定剧集到其它目录。 */
+  /** 移动指定剧集到其它目录。若移动的是当前正在播放的视频，保持正常播放，不中断、不切集、不退出。 */
   async moveEpisode(pickCode: string): Promise<void> {
     const content = this.content.get()
     const item = content.playlist.find(entry => entry.pickCode === pickCode)
@@ -152,7 +152,26 @@ export class PlaybackSession {
     const dialog = new MoveDialog(item.fileId, item.cid || content.cid || '0', () => {})
     const result = await dialog.show()
     if (!result.moved) return
-    this.removeFromList(pickCode)
+
+    const isCurrent = pickCode === content.pickCode
+    if (isCurrent) {
+      if (result.targetCid) {
+        const updatedPlaylist = content.playlist.map(entry =>
+          entry.pickCode === pickCode ? { ...entry, cid: result.targetCid } : entry,
+        )
+        this.content.set({ cid: result.targetCid, playlist: updatedPlaylist })
+        const params = new URLSearchParams(window.location.search)
+        params.set('cid', result.targetCid)
+        window.history.replaceState(null, '', `${window.location.pathname}?${params.toString()}`)
+      }
+      void this.loadBreadcrumb(pickCode)
+      return
+    }
+
+    // 移动非当前剧集：从当前播放列表中移除
+    this.content.set({
+      playlist: content.playlist.filter(entry => entry.pickCode !== pickCode),
+    })
   }
 
   /** 删除指定剧集；若为当前集则自动跳到下一集。 */
