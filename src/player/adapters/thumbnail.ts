@@ -28,8 +28,9 @@ export async function loadCovers(pickCode: string, duration: number, count = 36)
   }
 }
 
-// 常驻抽帧会话：同一视频内连续精确抽帧复用同一个 clipper，做到「指哪出哪」且快
+// 常驻抽帧会话：同一视频内连续精确抽帧复用同一个 clipper，做到「指哪出哪」且快；带单实例互斥防并发
 let currentSession: { pickCode: string, session: CoverSession } | null = null
+let openingPromise: { pickCode: string, promise: Promise<CoverSession> } | null = null
 
 export async function getPreciseCover(pickCode: string, time: number, duration: number): Promise<VideoThumbnail | null> {
   if (!pickCode || !duration) return null
@@ -37,11 +38,31 @@ export async function getPreciseCover(pickCode: string, time: number, duration: 
   if (!currentSession || currentSession.pickCode !== pickCode) {
     currentSession?.session.destroy()
     currentSession = null
+
+    if (!openingPromise || openingPromise.pickCode !== pickCode) {
+      openingPromise = {
+        pickCode,
+        promise: openCoverSession(pickCode),
+      }
+    }
+
     try {
-      currentSession = { pickCode, session: await openCoverSession(pickCode) }
+      const session = await openingPromise.promise
+      if (openingPromise?.pickCode === pickCode) {
+        currentSession = { pickCode, session }
+      }
+      else {
+        session.destroy()
+        return null
+      }
     }
     catch {
       return null
+    }
+    finally {
+      if (openingPromise?.pickCode === pickCode) {
+        openingPromise = null
+      }
     }
   }
 
@@ -50,6 +71,7 @@ export async function getPreciseCover(pickCode: string, time: number, duration: 
 
 /** 释放常驻会话（切集 / 卸载时调用）。 */
 export function releaseCoverSession(): void {
+  openingPromise = null
   currentSession?.session.destroy()
   currentSession = null
 }

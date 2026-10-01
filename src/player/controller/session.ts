@@ -11,7 +11,7 @@ import { createContentStore, type PlaybackMode } from '../state/content-state'
 import { loadBreadcrumb, loadPlaylist } from '../adapters/playlist'
 import { downloadVideo, loadFavorite, removeVideo, setFavorite } from '../adapters/files'
 import { loadSubtitleCues, loadSubtitleList } from '../adapters/subtitles'
-import { getPreciseCover, loadCovers, releaseCoverSession, type VideoThumbnail } from '../adapters/thumbnail'
+import { getPreciseCover, releaseCoverSession, type VideoThumbnail } from '../adapters/thumbnail'
 import {
   prepareQualitySource,
   resolvePlaybackSources,
@@ -45,8 +45,6 @@ export class PlaybackSession {
 
   private qualityOptions: QualityOption[] = []
   private subtitleItems: SubtitleItem[] = []
-  private covers: VideoThumbnail[] = []
-  private coversPickCode = ''
   private switching = false
 
   constructor(
@@ -82,7 +80,6 @@ export class PlaybackSession {
 
     this.history.start()
     void this.history.restore(this.params.pickCode)
-    this.scheduleCoverWarmup()
 
     return resolved.initial
   }
@@ -248,11 +245,8 @@ export class PlaybackSession {
       void this.history.restore(pickCode)
       void this.refreshFavorite()
 
-      // 切集后封面归新视频：释放常驻抽帧会话并重新预热
+      // 切集后释放常驻抽帧会话（若上个视频正在抽帧则立即熔断释放，防请求残留）
       releaseCoverSession()
-      this.covers = []
-      this.coversPickCode = ''
-      this.scheduleCoverWarmup()
 
       const pos = getPlaylistPosition(this.content.get().playlist, pickCode)
       this.content.set({
@@ -290,30 +284,6 @@ export class PlaybackSession {
     this.content.set({
       qualities: resolved.options.map(option => option.label),
       quality: resolved.qualityLabel,
-    })
-  }
-
-  private async warmCovers(duration: number): Promise<void> {
-    const pickCode = this.content.get().pickCode
-    if (!pickCode || !duration || this.coversPickCode === pickCode) return
-    this.coversPickCode = pickCode
-    const covers = await loadCovers(pickCode, duration, 36)
-    if (pickCode === this.content.get().pickCode) {
-      this.covers = covers
-    }
-  }
-
-  /** 等时长就绪后后台预热封面。 */
-  private scheduleCoverWarmup(): void {
-    const duration = this.core.store.get().duration
-    if (duration) {
-      void this.warmCovers(duration)
-      return
-    }
-    const off = this.core.store.subscribe((state) => {
-      if (!state.duration) return
-      off()
-      void this.warmCovers(state.duration)
     })
   }
 
@@ -381,29 +351,16 @@ export class PlaybackSession {
     this.content.set({ mode })
   }
 
-  /** 进度条悬停预览：先即时返回最近的预热封面，再异步精修精确帧。 */
+  /** 进度条悬停预览：仅当用户悬停时按需抽取单帧（无后台多帧预热，杜绝风控洪峰）。 */
   getCoverAt(
     time: number,
     duration: number,
     onUpdate: (cover: { imgUrl: string, width?: number, height?: number } | null) => void,
   ): void {
     const pickCode = this.content.get().pickCode
-
-    if (this.covers.length) {
-      let best = this.covers[0]
-      let bestDelta = Math.abs(best.time - time)
-      for (const cover of this.covers) {
-        const delta = Math.abs(cover.time - time)
-        if (delta < bestDelta) {
-          bestDelta = delta
-          best = cover
-        }
-      }
-      onUpdate({ imgUrl: best.imgUrl, width: best.width, height: best.height })
-    }
-    else {
+    if (!pickCode || !duration) {
       onUpdate(null)
-      void this.warmCovers(duration)
+      return
     }
 
     void (async () => {
