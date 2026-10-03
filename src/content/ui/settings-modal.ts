@@ -193,6 +193,36 @@ export function openSettingsModal(doc: Document, options?: SettingsModalOptions)
     previewCard.appendChild(switchLabel)
     pane.appendChild(previewCard)
 
+    // 解压后自动删除原压缩包开关卡片
+    const unarchiveDeleteCard = doc.createElement('div')
+    unarchiveDeleteCard.className = 'm115-settings-card'
+
+    const unarchiveDeleteInfo = doc.createElement('div')
+    unarchiveDeleteInfo.className = 'm115-settings-card-info'
+
+    const unarchiveDeleteTitle = doc.createElement('div')
+    unarchiveDeleteTitle.className = 'm115-settings-card-title'
+    unarchiveDeleteTitle.textContent = '解压后删除原压缩包'
+
+    const unarchiveDeleteDesc = doc.createElement('div')
+    unarchiveDeleteDesc.className = 'm115-settings-card-desc'
+    unarchiveDeleteDesc.textContent = '云端解压成功后，自动将原压缩包移至回收站（仅解压完成才触发，失败或密码未解锁时不删除）'
+
+    unarchiveDeleteInfo.appendChild(unarchiveDeleteTitle)
+    unarchiveDeleteInfo.appendChild(unarchiveDeleteDesc)
+
+    const unarchiveDeleteSwitch = createToggleSwitch(
+      doc,
+      getSettings().deleteArchiveAfterExtraction,
+      (checked) => {
+        updateSettings({ deleteArchiveAfterExtraction: checked })
+      },
+    )
+
+    unarchiveDeleteCard.appendChild(unarchiveDeleteInfo)
+    unarchiveDeleteCard.appendChild(unarchiveDeleteSwitch)
+    pane.appendChild(unarchiveDeleteCard)
+
     container.appendChild(pane)
   }
 

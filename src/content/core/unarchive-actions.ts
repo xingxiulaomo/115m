@@ -4,6 +4,7 @@ import { isRuntimeContextInvalidatedResult, sendRuntimeMessageSafe } from './run
 import { isArchiveFileName, isSecondaryVolume, stripArchiveExtension } from '../../shared/archive'
 import { getItemPickCode, getItemTitle, getSelectedItems } from './native-dom'
 import { WEB_API_URL } from '../../lib/constants'
+import { getSettings } from '../../shared/settings'
 
 const MAX_PROGRESS_CHECKS = 120
 const PROGRESS_DELAY_MS = 1500
@@ -163,15 +164,41 @@ async function submitExtract(file: FileInfo, targetCid: string, entries: Extract
   return String(extractId)
 }
 
-async function waitExtractDone(extractId: string, onProgress?: (percent: number) => void) {
+export async function resolveArchiveFileId(file: FileInfo, parentCid: string): Promise<string | undefined> {
+  if (file.fileId) return file.fileId
+  try {
+    const params = new URLSearchParams({
+      aid: '1',
+      cid: parentCid,
+      offset: '0',
+      limit: '1150',
+      show_dir: '0',
+      format: 'json',
+    })
+    const json = await requestJson<{ data?: Array<{ pc?: string, fid?: string, file_id?: string }> }>(`${WEB_API_URL}/files?${params}`)
+    const match = (json.data || []).find(entry => entry.pc === file.pickCode)
+    return match?.fid || match?.file_id
+  }
+  catch {
+    return undefined
+  }
+}
+
+async function deleteArchiveFile(parentCid: string, fileId: string) {
+  const body = new URLSearchParams({ pid: parentCid })
+  body.append('fid[0]', fileId)
+  await requestJson(`${WEB_API_URL}/rb/delete`, body)
+}
+
+async function waitExtractDone(extractId: string, onProgress?: (percent: number) => void): Promise<{ done: boolean, message: string }> {
   for (let i = 0; i < MAX_PROGRESS_CHECKS; i++) {
     const json = await requestJson<{ data?: { percent?: number } }>(`${WEB_API_URL}/files/add_extract_file?extract_id=${encodeURIComponent(extractId)}`)
     const percent = json.data?.percent || 0
     onProgress?.(percent)
-    if (percent >= 100) return '解压完成'
+    if (percent >= 100) return { done: true, message: '解压完成' }
     await wait(PROGRESS_DELAY_MS)
   }
-  return '任务已提交，仍在后台解压，请稍后刷新查看'
+  return { done: false, message: '任务已提交，仍在后台解压，请稍后刷新查看' }
 }
 
 async function unarchiveOne(file: FileInfo, onProgress?: (percent: number) => void, allowPasswordPrompt = true): Promise<UnarchiveResult> {
@@ -184,7 +211,22 @@ async function unarchiveOne(file: FileInfo, onProgress?: (percent: number) => vo
   try {
     const entries = await readEntriesWithPasswordSupport(file, allowPasswordPrompt)
     const extractId = await submitExtract(file, folder.cid, entries)
-    const message = await waitExtractDone(extractId, onProgress)
+    const { done, message } = await waitExtractDone(extractId, onProgress)
+
+    if (done && getSettings().deleteArchiveAfterExtraction) {
+      try {
+        const fileId = await resolveArchiveFileId(file, parentCid)
+        if (fileId) {
+          await deleteArchiveFile(parentCid, fileId)
+          return { ok: true, fileName: file.fileName, message: `${message}，原压缩包已移入回收站` }
+        }
+      }
+      catch (delError) {
+        console.warn('[115m] 删除原压缩包失败:', delError)
+        return { ok: true, fileName: file.fileName, message: `${message}（原压缩包删除失败）` }
+      }
+    }
+
     return { ok: true, fileName: file.fileName, message }
   }
   catch (error) {
@@ -228,7 +270,7 @@ function collectSelectedArchiveFiles(doc: Document): FileInfo[] {
       fileName: getItemTitle(item),
       duration: 0,
       isVideo: false,
-      fileId: item.getAttribute('file_id') || undefined,
+      fileId: item.getAttribute('file_id') || item.getAttribute('fid') || item.getAttribute('fileid') || undefined,
       parentId: item.getAttribute('cid') || item.getAttribute('p_id') || undefined,
     }
   }).filter(file => file.pickCode && isArchiveFileName(file.fileName))
@@ -518,7 +560,12 @@ export function injectUnarchiveButton(item: HTMLElement, file: FileInfo) {
     btn.classList.add('is-busy')
     showToast(doc, `正在解压：${file.fileName}\n请不要刷新或关闭页面。`, 0)
     try {
-      const result = await unarchiveOne(file, percent => showToast(doc, `正在解压：${file.fileName}\n状态：${formatExtractStatus(percent)}\n请不要刷新或关闭页面。`, 0))
+      const targetFile: FileInfo = {
+        ...file,
+        fileId: file.fileId || item.getAttribute('file_id') || item.getAttribute('fid') || item.getAttribute('fileid') || undefined,
+        parentId: file.parentId || item.getAttribute('cid') || item.getAttribute('p_id') || undefined,
+      }
+      const result = await unarchiveOne(targetFile, percent => showToast(doc, `正在解压：${file.fileName}\n状态：${formatExtractStatus(percent)}\n请不要刷新或关闭页面。`, 0))
       const refreshed = await refreshNativeList(doc)
       showToast(doc, `${file.fileName}\n${result.message}。${refreshed ? '列表已刷新。' : '请刷新页面查看新文件夹。'}`, 3000)
     }

@@ -1,6 +1,11 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { formatExtractStatus, MAX_BATCH_UNARCHIVE_FILES, setupUnarchiveActions } from './unarchive-actions'
+import {
+  formatExtractStatus,
+  MAX_BATCH_UNARCHIVE_FILES,
+  resolveArchiveFileId,
+  setupUnarchiveActions,
+} from './unarchive-actions'
 import { isArchiveFileName, stripArchiveExtension } from '../../shared/archive'
 
 describe('formatExtractStatus 解压状态文案', () => {
@@ -35,5 +40,17 @@ describe('setupUnarchiveActions 入口', () => {
 
   it('批量解压最大数量上限配置合理', () => {
     expect(MAX_BATCH_UNARCHIVE_FILES).toBe(20)
+  })
+
+  it('resolveArchiveFileId 优先直接返回已有的 fileId', async () => {
+    const file = {
+      pickCode: 'abc1234',
+      fileName: 'test.zip',
+      duration: 0,
+      isVideo: false,
+      fileId: '998877',
+    }
+    const resolved = await resolveArchiveFileId(file, '0')
+    expect(resolved).toBe('998877')
   })
 })

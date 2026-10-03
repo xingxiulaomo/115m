@@ -26,6 +26,7 @@ describe('settings-modal component', () => {
     expect(overlay).toBeTruthy()
     expect(overlay?.querySelector('.m115-settings-panel')).toBeTruthy()
     expect(overlay?.querySelector('.m115-settings-title')?.textContent).toContain('115m 扩展设置')
+    expect(overlay?.textContent).toContain('解压后删除原压缩包')
   })
 
   it('switches tabs on click', () => {

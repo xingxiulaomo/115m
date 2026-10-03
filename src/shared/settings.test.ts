@@ -40,6 +40,7 @@ describe('settings module', () => {
     const settings = getSettings()
     expect(settings).toEqual(DEFAULT_SETTINGS)
     expect(settings.enableVideoPreview).toBe(true)
+    expect(settings.deleteArchiveAfterExtraction).toBe(false)
     expect(settings.sidebarEnabledIds).toEqual(DEFAULT_SIDEBAR_IDS)
   })
 
@@ -55,12 +56,14 @@ describe('settings module', () => {
     const listener = vi.fn()
     const unsubscribe = subscribeSettings(listener)
 
-    const updated = updateSettings({ enableVideoPreview: false })
+    const updated = updateSettings({ enableVideoPreview: false, deleteArchiveAfterExtraction: true })
     expect(updated.enableVideoPreview).toBe(false)
+    expect(updated.deleteArchiveAfterExtraction).toBe(true)
     expect(getSettings().enableVideoPreview).toBe(false)
+    expect(getSettings().deleteArchiveAfterExtraction).toBe(true)
 
     expect(listener).toHaveBeenCalledWith(
-      expect.objectContaining({ enableVideoPreview: false }),
+      expect.objectContaining({ enableVideoPreview: false, deleteArchiveAfterExtraction: true }),
     )
 
     unsubscribe()

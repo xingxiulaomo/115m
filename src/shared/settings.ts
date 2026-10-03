@@ -3,6 +3,8 @@ export interface M115Settings {
   sidebarEnabledIds: string[]
   /** 网盘列表与搜索结果页视频多帧封面预览开关 */
   enableVideoPreview: boolean
+  /** 解压成功确认后，自动删除原压缩包（移至回收站） */
+  deleteArchiveAfterExtraction: boolean
 }
 
 export const DEFAULT_SIDEBAR_IDS = ['wangpan', 'upload', 'star', 'recyclebin']
@@ -10,6 +12,7 @@ export const DEFAULT_SIDEBAR_IDS = ['wangpan', 'upload', 'star', 'recyclebin']
 export const DEFAULT_SETTINGS: M115Settings = {
   sidebarEnabledIds: DEFAULT_SIDEBAR_IDS,
   enableVideoPreview: true,
+  deleteArchiveAfterExtraction: false,
 }
 
 const SETTINGS_STORAGE_KEY = 'm115_user_settings'
@@ -53,6 +56,9 @@ export function getSettings(): M115Settings {
         enableVideoPreview: typeof parsed?.enableVideoPreview === 'boolean'
           ? parsed.enableVideoPreview
           : DEFAULT_SETTINGS.enableVideoPreview,
+        deleteArchiveAfterExtraction: typeof parsed?.deleteArchiveAfterExtraction === 'boolean'
+          ? parsed.deleteArchiveAfterExtraction
+          : DEFAULT_SETTINGS.deleteArchiveAfterExtraction,
       }
     }
 
