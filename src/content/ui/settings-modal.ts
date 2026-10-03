@@ -5,7 +5,7 @@ import {
 } from '../../shared/settings'
 
 export const SETTINGS_MODAL_ID = 'm115-settings-modal'
-export const EXTENSION_VERSION = globalThis.chrome?.runtime?.getManifest?.()?.version || '2.0.3'
+export const EXTENSION_VERSION = globalThis.chrome?.runtime?.getManifest?.()?.version || '2.0.4'
 
 export interface SidebarNavOption {
   id: string

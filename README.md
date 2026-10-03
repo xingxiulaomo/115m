@@ -7,7 +7,7 @@
 <h3 align="center">115 网盘现代流媒体播放器与全屏多媒体增强套件</h3>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Release-v2.0.3-38bdf8?style=flat-square&logo=googlechrome&logoColor=white" alt="Version 2.0.3" />
+  <img src="https://img.shields.io/badge/Release-v2.0.4-38bdf8?style=flat-square&logo=googlechrome&logoColor=white" alt="Version 2.0.4" />
   <img src="https://img.shields.io/badge/Manifest-MV3-2563eb?style=flat-square" alt="Manifest V3" />
   <img src="https://img.shields.io/badge/Engine-Vidstack_v1.15-0ea5e9?style=flat-square" alt="Engine Vidstack" />
   <img src="https://img.shields.io/badge/Viewer-PhotoSwipe_v5-8b5cf6?style=flat-square" alt="Viewer PhotoSwipe" />
@@ -113,7 +113,7 @@
 
 ### 推荐方式：下载预编译版本（适合普通用户）
 
-1. 前往本仓库的 **[Releases 页面](../../releases)** 下载最新版本的发布压缩包（如 `115m-v2.0.3.zip`）；
+1. 前往本仓库的 **[Releases 页面](../../releases)** 下载最新版本的发布压缩包（如 `115m-v2.0.4.zip`）；
 2. 解压至本地固定目录（请勿解压在临时目录，安装后需长期保留该文件夹）；
 3. 打开 Chrome 浏览器，访问：`chrome://extensions/`；
 4. 开启页面右上角的 **开发者模式** 开关；
