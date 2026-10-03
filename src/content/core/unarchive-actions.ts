@@ -7,7 +7,8 @@ import { WEB_API_URL } from '../../lib/constants'
 
 const MAX_PROGRESS_CHECKS = 120
 const PROGRESS_DELAY_MS = 1500
-const MAX_BATCH_UNARCHIVE_FILES = 5
+export const MAX_BATCH_UNARCHIVE_FILES = 20
+const BATCH_INTERVAL_MS = 600
 let batchRunning = false
 
 type MainWorldResponse = { ok?: boolean, text?: string, error?: string, status?: number } | null
@@ -256,6 +257,9 @@ async function runBatch(doc: Document, files: FileInfo[]) {
       }
       catch (error) {
         results.push({ ok: false, fileName: file.fileName, message: error instanceof Error ? error.message : String(error) })
+      }
+      if (i < files.length - 1) {
+        await wait(BATCH_INTERVAL_MS)
       }
     }
 

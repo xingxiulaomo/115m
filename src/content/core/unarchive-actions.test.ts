@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { formatExtractStatus, setupUnarchiveActions } from './unarchive-actions'
+import { formatExtractStatus, MAX_BATCH_UNARCHIVE_FILES, setupUnarchiveActions } from './unarchive-actions'
 import { isArchiveFileName, stripArchiveExtension } from '../../shared/archive'
 
 describe('formatExtractStatus 解压状态文案', () => {
@@ -31,5 +31,9 @@ describe('setupUnarchiveActions 入口', () => {
   it('在无目标元素时安全返回', () => {
     const doc = document.implementation.createHTMLDocument()
     expect(() => setupUnarchiveActions(doc)).not.toThrow()
+  })
+
+  it('批量解压最大数量上限配置合理', () => {
+    expect(MAX_BATCH_UNARCHIVE_FILES).toBe(20)
   })
 })
