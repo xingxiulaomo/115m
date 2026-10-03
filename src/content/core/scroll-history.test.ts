@@ -2,6 +2,7 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import {
   buildListKey,
+  extractCid,
   extractListParams,
   restoreScrollPosition,
   saveScrollPosition,
@@ -47,6 +48,38 @@ describe('extractListParams', () => {
     setSearch('')
     const doc = { defaultView: window } as unknown as Document
     expect(extractListParams(doc)).toEqual({ cid: '0', offset: '0', tpl: '' })
+  })
+
+  it('extracts real cid from breadcrumb DOM when URL has no cid', () => {
+    setSearch('')
+    const doc = document.implementation.createHTMLDocument()
+    const pathList = doc.createElement('div')
+    pathList.id = 'js_path_list'
+    pathList.innerHTML = `
+      <a href="javascript:;" cid="0">全部文件</a>
+      <a href="javascript:;" cid="100">父文件夹</a>
+      <span class="cur" cid="200">当前子文件夹</span>
+    `
+    doc.body.appendChild(pathList)
+
+    expect(extractCid(doc)).toBe('200')
+    expect(extractListParams(doc).cid).toBe('200')
+  })
+
+  it('extracts cid from list items when breadcrumb is missing', () => {
+    setSearch('')
+    const doc = document.implementation.createHTMLDocument()
+    const list = doc.createElement('div')
+    list.className = 'list-contents'
+    list.innerHTML = `
+      <ul>
+        <li rel="item" p_id="555" pick_code="abc">文件1</li>
+      </ul>
+    `
+    doc.body.appendChild(list)
+
+    expect(extractCid(doc)).toBe('555')
+    expect(extractListParams(doc).cid).toBe('555')
   })
 })
 

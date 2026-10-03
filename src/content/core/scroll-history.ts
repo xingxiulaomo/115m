@@ -82,28 +82,144 @@ export function restoreScrollPosition(key: string, scrollBox: Element): boolean 
 }
 
 /**
+ * 从 document 或 URL 中多级提取真实的 cid
+ * 优先级策略：
+ * 1. 115 官方面包屑/路径栏 DOM（与界面当前实际呈现强同步）
+ * 2. 115 列表已有项的父目录属性 (li[p_id] / li[parent_id])
+ * 3. 115 官方 Core.FileConfig 全局变量
+ * 4. iframe/顶级/父级窗口 URL 参数 (search 或 hash 中的 cid)
+ */
+export function extractCid(doc: Document): string {
+  // 1. 尝试从 115 官方面包屑/路径栏 DOM 提取
+  const pathSelectors = [
+    '#js_path_list [cid]',
+    '#js_path_list [cate_id]',
+    '#js_path_list [data-cid]',
+    '.path-list [cid]',
+    '.path-list [cate_id]',
+    '.file-path [cid]',
+    '.file-path [cate_id]',
+    '.path-cell [cid]',
+    '.path-cell [cate_id]',
+    '#js_category_box [cid]',
+    '#js_category_box [cate_id]',
+  ]
+
+  for (const selector of pathSelectors) {
+    const nodes = doc.querySelectorAll?.<HTMLElement>(selector)
+    if (nodes && nodes.length > 0) {
+      const activeNode = Array.from(nodes).reverse().find(el =>
+        el.classList.contains('cur')
+        || el.classList.contains('current')
+        || el.classList.contains('active'),
+      ) || nodes[nodes.length - 1]
+
+      const cid = activeNode?.getAttribute('cid')
+        || activeNode?.getAttribute('cate_id')
+        || activeNode?.getAttribute('data-cid')
+      if (cid && cid.trim() !== '') {
+        return cid.trim()
+      }
+    }
+  }
+
+  // 2. 尝试从列表项的父目录属性提取（列表中所有文件的 p_id 均为当前所在目录）
+  const itemWithPid = doc.querySelector?.<HTMLElement>(
+    '.list-contents li[rel="item"][p_id], .list-contents li[rel="item"][parent_id], .list-thumb li[rel="item"][p_id], .list-thumb li[rel="item"][parent_id]',
+  )
+  if (itemWithPid) {
+    const pid = itemWithPid.getAttribute('p_id') || itemWithPid.getAttribute('parent_id') || itemWithPid.getAttribute('pid')
+    if (pid && pid.trim() !== '') {
+      return pid.trim()
+    }
+  }
+
+  // 3. 尝试从 115 页面 JS 全局变量提取
+  try {
+    const win = doc.defaultView as any
+    if (win?.Core?.FileConfig) {
+      const coreCid = win.Core.FileConfig.CurCid ?? win.Core.FileConfig.cid
+      if (coreCid !== undefined && coreCid !== null && String(coreCid).trim() !== '') {
+        return String(coreCid).trim()
+      }
+    }
+  }
+  catch {
+    // 忽略异常
+  }
+
+  // 4. 从当前文档 location 以及顶层/父级窗口 location 提取
+  const locCandidates = [
+    doc.defaultView?.location,
+    doc.defaultView?.top?.location,
+    doc.defaultView?.parent?.location,
+  ]
+
+  for (const loc of locCandidates) {
+    try {
+      if (!loc) continue
+      const searchParams = new URLSearchParams(loc.search ?? '')
+      const cid = searchParams.get('cid')
+      if (cid && cid.trim() !== '') return cid.trim()
+
+      if (loc.hash) {
+        const hashQuery = loc.hash.includes('?') ? loc.hash.slice(loc.hash.indexOf('?') + 1) : ''
+        const hashParams = new URLSearchParams(hashQuery)
+        const hashCid = hashParams.get('cid')
+        if (hashCid && hashCid.trim() !== '') return hashCid.trim()
+      }
+    }
+    catch {
+      // 跨域或安全异常忽略
+    }
+  }
+
+  return '0'
+}
+
+/**
  * 从 document 或 URL 中提取 cid、offset、tpl
  */
 export function extractListParams(doc: Document): { cid: string, offset: string, tpl: string } {
-  const loc = doc.defaultView?.location
-  const searchParams = new URLSearchParams(loc?.search ?? '')
-  let cid = searchParams.get('cid')
-  let offset = searchParams.get('offset')
-  let tpl = searchParams.get('tpl')
+  const cid = extractCid(doc)
 
-  if (!cid && loc?.hash) {
-    const hashQuery = loc.hash.includes('?') ? loc.hash.slice(loc.hash.indexOf('?') + 1) : ''
-    const hashParams = new URLSearchParams(hashQuery)
-    cid = hashParams.get('cid')
-    offset = offset ?? hashParams.get('offset')
-    tpl = tpl ?? hashParams.get('tpl')
+  let tpl = ''
+  if (doc.querySelector?.('.list-thumb')) {
+    tpl = 'view_large'
+  }
+  else if (doc.querySelector?.('.list-contents')) {
+    tpl = 'view_list'
   }
 
-  return {
-    cid: cid ?? '0',
-    offset: offset ?? '0',
-    tpl: tpl ?? '',
+  let offset = '0'
+  const locCandidates = [
+    doc.defaultView?.location,
+    doc.defaultView?.top?.location,
+    doc.defaultView?.parent?.location,
+  ]
+
+  for (const loc of locCandidates) {
+    try {
+      if (!loc) continue
+      const searchParams = new URLSearchParams(loc.search ?? '')
+      const paramOffset = searchParams.get('offset')
+      if (offset === '0' && paramOffset && paramOffset.trim() !== '') {
+        offset = paramOffset.trim()
+      }
+      if (!tpl) {
+        const paramTpl = searchParams.get('tpl')
+        if (paramTpl && paramTpl.trim() !== '') {
+          tpl = paramTpl.trim()
+        }
+      }
+      if (offset !== '0' && tpl) break
+    }
+    catch {
+      // ignore
+    }
   }
+
+  return { cid, offset, tpl }
 }
 
 export function buildListKey(doc: Document): string {
@@ -158,6 +274,7 @@ export class ScrollPositionManager {
   private key = ''
   private isRestoring = false
   private targetScrollTop = 0
+  private resetLockTimer: ReturnType<typeof setTimeout> | null = null
 
   /**
    * 绑定滚动容器
@@ -176,19 +293,17 @@ export class ScrollPositionManager {
     }
     else {
       // 切换到了新文件夹或新页面：重置位置为最顶部 0
-      this.targetScrollTop = 0
-      this.isRestoring = true
-      scrollBox.scrollTop = 0
-      setActiveScroll(this.key, 0)
-      window.requestAnimationFrame(() => {
-        this.isRestoring = false
-      })
+      this.resetToTop()
     }
 
     this.handleScroll = throttle(() => {
       if (!this.scrollBox || !this.key || this.isRestoring) return
       const currentKey = this.doc ? buildListKey(this.doc) : this.key
-      if (currentKey !== this.key) return
+      if (currentKey !== this.key) {
+        this.key = currentKey
+        this.resetToTop()
+        return
+      }
 
       const st = this.scrollBox.scrollTop
       if (st > 0) {
@@ -206,6 +321,43 @@ export class ScrollPositionManager {
   }
 
   /**
+   * 外部强制重置为顶部（用于用户点击面包屑导航离开当前目录时快速重置）
+   */
+  forceResetToTop() {
+    this.key = ''
+    this.resetToTop()
+  }
+
+  private resetToTop() {
+    if (!this.scrollBox) return
+    this.targetScrollTop = 0
+    this.isRestoring = true
+    this.scrollBox.scrollTop = 0
+    if (this.key) {
+      setActiveScroll(this.key, 0)
+    }
+
+    if (this.resetLockTimer) {
+      clearTimeout(this.resetLockTimer)
+    }
+
+    // 强化重置锁：在随后的 300ms 窗口与后续帧持续保持 scrollTop = 0，防 115 异步重绘或旧滚动残留
+    this.resetLockTimer = setTimeout(() => {
+      this.isRestoring = false
+      this.resetLockTimer = null
+    }, 300)
+
+    window.requestAnimationFrame(() => {
+      if (!this.scrollBox || this.targetScrollTop !== 0) return
+      this.scrollBox.scrollTop = 0
+      window.requestAnimationFrame(() => {
+        if (!this.scrollBox || this.targetScrollTop !== 0) return
+        this.scrollBox.scrollTop = 0
+      })
+    })
+  }
+
+  /**
    * 当列表发生变化（如重命名后刷新渲染）时检查并恢复
    */
   checkAndRestore() {
@@ -213,13 +365,7 @@ export class ScrollPositionManager {
     const currentKey = buildListKey(this.doc)
     if (currentKey !== this.key) {
       this.key = currentKey
-      this.targetScrollTop = 0
-      this.isRestoring = true
-      this.scrollBox.scrollTop = 0
-      setActiveScroll(currentKey, 0)
-      window.requestAnimationFrame(() => {
-        this.isRestoring = false
-      })
+      this.resetToTop()
       return
     }
 
@@ -271,6 +417,10 @@ export class ScrollPositionManager {
     this.key = ''
     this.targetScrollTop = 0
     this.isRestoring = false
+    if (this.resetLockTimer) {
+      clearTimeout(this.resetLockTimer)
+      this.resetLockTimer = null
+    }
   }
 }
 
